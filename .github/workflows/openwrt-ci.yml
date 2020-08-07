@@ -5,11 +5,11 @@
 #
 # Copyright (C) 2020 KFERMercer
 #
-name: OpenWrt-CI
+name: 云编译
 
 on:
   schedule:
-    - cron: 0 20 * * *
+    - cron: 30 20 * * *
   release:
     types: [published]
 
@@ -17,7 +17,7 @@ jobs:
 
   build_openwrt:
 
-    name: Build OpenWrt firmware
+    name: 编译OpenWrt
 
     runs-on: ubuntu-latest
 
@@ -25,12 +25,12 @@ jobs:
 
     steps:
 
-      - name: Checkout
+      - name: 校验本地文件
         uses: actions/checkout@v2
         with:
           ref: master
 
-      - name: Space cleanup
+      - name: 清理系统环境
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
@@ -43,22 +43,73 @@ jobs:
           sudo -E apt-get clean
 
           df -h
-
-      - name: Update feeds
+          
+      - name: 增加第三方LuCI
+        run: |
+          cd package
+          mkdir openwrt-packages
+          cd openwrt-packages
+          git clone https://github.com/rosywrt/luci-theme-rosy
+          
+      - name: 更新
         run: |
           sed -i 's/#src-git helloworld/src-git helloworld/g' ./feeds.conf.default
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Generate configuration file
-        run: make defconfig
+      - name: 生成配置文件
+        run: |
+          rm -f ./.config*
+          touch ./.config
+          # 编译K3固件:
+          cat >> .config <<EOF
+          CONFIG_TARGET_bcm53xx=y
+          CONFIG_TARGET_bcm53xx_generic=y
+          CONFIG_TARGET_bcm53xx_generic_DEVICE_phicomm-k3=y
+          EOF
+          # IPv6支持:
+          cat >> .config <<EOF
+          CONFIG_PACKAGE_ipv6helper=y
+          EOF
+          # USB3.0支持:
+          cat >> .config <<EOF
+          CONFIG_PACKAGE_kmod-usb-ohci=y
+          CONFIG_PACKAGE_kmod-usb-ohci-pci=y
+          CONFIG_PACKAGE_kmod-usb2=y
+          CONFIG_PACKAGE_kmod-usb2-pci=y
+          CONFIG_PACKAGE_kmod-usb3=y
+          EOF
+          # LuCI插件选择:
+          cat >> .config <<EOF
+          CONFIG_PACKAGE_luci-app-guest-wifi=y
+          CONFIG_PACKAGE_luci-app-ipsec-vpnd=y
+          CONFIG_PACKAGE_luci-app-openvpn=y
+          CONFIG_PACKAGE_luci-app-openvpn-server=y
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_V2ray=y
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Redsocks2=n
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_ShadowsocksR_Server=n
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Trojan=n
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_V2ray_plugin=n
+          CONFIG_PACKAGE_luci-app-syncdial=y
+          CONFIG_PACKAGE_luci-app-ttyd=y
+          CONFIG_PACKAGE_luci-app-vsftpd=n
+          CONFIG_PACKAGE_luci-app-xlnetacc=n
+          CONFIG_PACKAGE_luci-app-zerotier=n
+          EOF
+          # LuCI主题:
+          cat >> .config <<EOF
+          CONFIG_PACKAGE_luci-theme-rosy=y
+          EOF
+          
+          sed -i 's/^[ \t]*//g' ./.config
+          make defconfig
 
-      - name: Make download
+      - name: 下载编译所需源码
         run: |
           make download -j8
           find dl -size -1024c -exec rm -f {} \;
 
-      - name: Compile firmware
+      - name: 进行固件编译
         run: |
           make -j$(nproc) || make -j1 V=s
           echo "======================="
@@ -70,7 +121,7 @@ jobs:
           du -h --max-depth=1 ./build_dir
           du -h --max-depth=1 ./bin
 
-      - name: Prepare artifact
+      - name: 准备工件
         run: |
           mkdir -p ./artifact/firmware
           mkdir -p ./artifact/package
@@ -80,26 +131,26 @@ jobs:
           cp -rf $(find ./bin/packages/ -type f -name "*.ipk") ./artifact/package/
           cp -rf $(find ./bin/targets/ -type f -name "*.buildinfo" -o -name "*.manifest") ./artifact/buildinfo/
 
-      - name: Deliver buildinfo
+      - name: 上传buildinfo文件
         uses: actions/upload-artifact@v2
         with:
           name: OpenWrt_buildinfo
           path: ./artifact/buildinfo/
 
-      - name: Deliver package
+      - name: 上传包文件
         uses: actions/upload-artifact@v2
         with:
           name: OpenWrt_package
           path: ./artifact/package/
 
-      - name: Deliver firmware
+      - name: 上传固件
         uses: actions/upload-artifact@v2
         with:
           name: OpenWrt_firmware
           path: ./bin/targets/
   
 
-      - name: Upload release asset
+      - name: 发布
         if: github.event == 'release'
         uses: svenstaro/upload-release-action@v2
         with:
