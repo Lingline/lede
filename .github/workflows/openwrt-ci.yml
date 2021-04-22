@@ -50,6 +50,7 @@ jobs:
           mkdir openwrt-packages
           cd openwrt-packages
           git clone https://github.com/rosywrt/luci-theme-rosy
+          git clone https://github.com/jerrykuku/luci-app-jd-dailybonus
           
       - name: 更新
         run: |
@@ -95,6 +96,7 @@ jobs:
           CONFIG_PACKAGE_luci-app-vsftpd=n
           CONFIG_PACKAGE_luci-app-xlnetacc=n
           CONFIG_PACKAGE_luci-app-zerotier=n
+          CONFIG_PACKAGE_luci-app-jd-dailybonus=y
           EOF
           # LuCI主题:
           cat >> .config <<EOF
